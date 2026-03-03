@@ -27,7 +27,6 @@ const baseLayers = {
 
 let activeBaseLayer = baseLayers.streets;
 activeBaseLayer.addTo(map);
-
 L.control.scale({ metric: true, imperial: false }).addTo(map);
 
 const csvInput = document.getElementById('csvInput');
@@ -38,9 +37,17 @@ const basemapSelector = document.getElementById('basemapSelector');
 const exportBtn = document.getElementById('exportBtn');
 const exportTitle = document.getElementById('exportTitle');
 const legendText = document.getElementById('legendText');
+const delimiterSelector = document.getElementById('delimiterSelector');
+const customDelimiter = document.getElementById('customDelimiter');
+const latColumn = document.getElementById('latColumn');
+const lonColumn = document.getElementById('lonColumn');
+const nameColumn = document.getElementById('nameColumn');
+const applyColumnsBtn = document.getElementById('applyColumnsBtn');
 
 let markerGroup = L.layerGroup().addTo(map);
 let currentPoints = [];
+let parsedRows = [];
+let parsedHeaders = [];
 
 const aliases = {
   lat: ['lat', 'latitude', 'latitud', 'y'],
@@ -57,6 +64,14 @@ const iconPresets = {
 
 function findColumn(headers, options) {
   return headers.find((header) => options.includes(header.toLowerCase().trim()));
+}
+
+function getDelimiter() {
+  if (delimiterSelector.value === 'custom') {
+    return customDelimiter.value || ',';
+  }
+
+  return delimiterSelector.value;
 }
 
 function clearUI(message) {
@@ -113,6 +128,115 @@ function renderPoints(points, fitBounds = false) {
   }
 }
 
+function fillColumnSelectors(headers) {
+  const options = headers
+    .map((header) => `<option value="${header}">${header}</option>`)
+    .join('');
+
+  latColumn.innerHTML = options;
+  lonColumn.innerHTML = options;
+  nameColumn.innerHTML = `<option value="">(Sin nombre)</option>${options}`;
+
+  const autoLat = findColumn(headers, aliases.lat);
+  const autoLon = findColumn(headers, aliases.lon);
+  const autoName = findColumn(headers, aliases.name);
+
+  if (autoLat) {
+    latColumn.value = autoLat;
+  }
+
+  if (autoLon) {
+    lonColumn.value = autoLon;
+  }
+
+  if (autoName) {
+    nameColumn.value = autoName;
+  }
+}
+
+function parseCurrentFile() {
+  const file = csvInput.files[0];
+  if (!file) {
+    return;
+  }
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter: getDelimiter(),
+    complete: ({ data, meta, errors }) => {
+      if (errors.length > 0) {
+        statusText.textContent = 'No se pudo leer el CSV. Revisa el separador y el formato.';
+        parsedRows = [];
+        parsedHeaders = [];
+        currentPoints = [];
+        clearUI('Archivo inválido.');
+        return;
+      }
+
+      parsedRows = data;
+      parsedHeaders = meta.fields || [];
+
+      if (parsedHeaders.length < 2) {
+        statusText.textContent = 'No se detectaron columnas suficientes. Verifica el separador.';
+        clearUI('No se pudieron detectar columnas.');
+        return;
+      }
+
+      fillColumnSelectors(parsedHeaders);
+      statusText.textContent = 'CSV cargado. Ahora selecciona columnas de latitud y longitud y pulsa "Aplicar columnas".';
+      clearUI('CSV leído. Falta aplicar columnas de coordenadas.');
+    },
+    error: () => {
+      statusText.textContent = 'Ocurrió un error al abrir el archivo.';
+      parsedRows = [];
+      parsedHeaders = [];
+      currentPoints = [];
+      clearUI('Error de lectura.');
+    },
+  });
+}
+
+function applySelectedColumns() {
+  if (parsedRows.length === 0 || parsedHeaders.length === 0) {
+    statusText.textContent = 'Primero sube y procesa un CSV.';
+    return;
+  }
+
+  const latKey = latColumn.value;
+  const lonKey = lonColumn.value;
+  const nameKey = nameColumn.value;
+
+  if (!latKey || !lonKey) {
+    statusText.textContent = 'Debes seleccionar columnas de latitud y longitud.';
+    return;
+  }
+
+  const points = [];
+  parsedRows.forEach((row, index) => {
+    const lat = Number.parseFloat(row[latKey]);
+    const lon = Number.parseFloat(row[lonKey]);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return;
+    }
+
+    const label = nameKey ? row[nameKey] || `Punto ${index + 1}` : `Punto ${index + 1}`;
+    points.push({ label, lat, lon });
+  });
+
+  if (points.length === 0) {
+    currentPoints = [];
+    statusText.textContent = 'No hay coordenadas válidas con esas columnas seleccionadas.';
+    clearUI('No hay puntos válidos para mostrar.');
+    return;
+  }
+
+  currentPoints = points;
+  renderPoints(currentPoints, true);
+  statusText.textContent = `Se cargaron ${currentPoints.length} punto(s) con las columnas seleccionadas.`;
+}
+
 function getScaleLabel() {
   const pointA = map.containerPointToLatLng([40, 40]);
   const pointB = map.containerPointToLatLng([140, 40]);
@@ -127,7 +251,7 @@ function getScaleLabel() {
 
 async function exportMapImage() {
   if (currentPoints.length === 0) {
-    statusText.textContent = 'Primero carga un CSV para poder exportar.';
+    statusText.textContent = 'Primero carga un CSV y aplica columnas para exportar.';
     return;
   }
 
@@ -167,65 +291,23 @@ async function exportMapImage() {
   }
 }
 
-csvInput.addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  if (!file) {
-    return;
+csvInput.addEventListener('change', parseCurrentFile);
+applyColumnsBtn.addEventListener('click', applySelectedColumns);
+
+delimiterSelector.addEventListener('change', () => {
+  customDelimiter.disabled = delimiterSelector.value !== 'custom';
+
+  if (delimiterSelector.value !== 'custom') {
+    customDelimiter.value = '';
   }
 
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: ({ data, meta, errors }) => {
-      if (errors.length > 0) {
-        statusText.textContent = 'No se pudo leer el CSV. Revisa el formato del archivo.';
-        clearUI('Archivo inválido.');
-        currentPoints = [];
-        return;
-      }
+  parseCurrentFile();
+});
 
-      const headers = meta.fields || [];
-      const latKey = findColumn(headers, aliases.lat);
-      const lonKey = findColumn(headers, aliases.lon);
-      const nameKey = findColumn(headers, aliases.name);
-
-      if (!latKey || !lonKey) {
-        statusText.textContent = 'Tu CSV debe incluir columnas de latitud y longitud.';
-        clearUI('No se encontraron columnas de coordenadas.');
-        currentPoints = [];
-        return;
-      }
-
-      const parsedPoints = [];
-
-      data.forEach((row, index) => {
-        const lat = Number.parseFloat(row[latKey]);
-        const lon = Number.parseFloat(row[lonKey]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-          return;
-        }
-
-        const label = row[nameKey] || `Punto ${index + 1}`;
-        parsedPoints.push({ label, lat, lon });
-      });
-
-      if (parsedPoints.length === 0) {
-        statusText.textContent = 'No se encontraron coordenadas válidas en el CSV.';
-        clearUI('No hay puntos para mostrar.');
-        currentPoints = [];
-        return;
-      }
-
-      currentPoints = parsedPoints;
-      renderPoints(currentPoints, true);
-      statusText.textContent = `Se cargaron ${currentPoints.length} punto(s) correctamente.`;
-    },
-    error: () => {
-      statusText.textContent = 'Ocurrió un error al abrir el archivo.';
-      clearUI('Error de lectura.');
-      currentPoints = [];
-    },
-  });
+customDelimiter.addEventListener('input', () => {
+  if (delimiterSelector.value === 'custom' && customDelimiter.value.length === 1) {
+    parseCurrentFile();
+  }
 });
 
 iconSelector.addEventListener('change', () => {

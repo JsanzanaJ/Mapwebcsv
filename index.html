@@ -18,7 +18,7 @@
     <header class="topbar">
       <div class="brand-pill">MAPFLIX CSV</div>
       <h1>Visualizador de CSV en mapa</h1>
-      <p>Carga un archivo CSV con coordenadas, personaliza íconos, mapas base y exporta.</p>
+      <p>Carga un CSV, define separador y elige columnas de coordenadas antes de graficar.</p>
     </header>
 
     <main class="layout">
@@ -27,6 +27,33 @@
           <div class="control-row">
             <label class="upload" for="csvInput">Subir CSV</label>
             <input id="csvInput" type="file" accept=".csv,text/csv" />
+
+            <label for="delimiterSelector">Separador</label>
+            <select id="delimiterSelector">
+              <option value=",">Coma (,)</option>
+              <option value=";">Punto y coma (;)</option>
+              <option value="\t">Tabulador (TAB)</option>
+              <option value="|">Pipe (|)</option>
+              <option value="custom">Otro...</option>
+            </select>
+
+            <label for="customDelimiter">Otro separador</label>
+            <input id="customDelimiter" type="text" maxlength="1" placeholder="Ej: :" disabled />
+          </div>
+
+          <div class="control-row">
+            <label for="latColumn">Columna latitud</label>
+            <select id="latColumn"></select>
+
+            <label for="lonColumn">Columna longitud</label>
+            <select id="lonColumn"></select>
+
+            <button id="applyColumnsBtn" type="button">Aplicar columnas</button>
+          </div>
+
+          <div class="control-row">
+            <label for="nameColumn">Columna nombre (opcional)</label>
+            <select id="nameColumn"></select>
 
             <label for="iconSelector">Ícono</label>
             <select id="iconSelector">
@@ -55,10 +82,7 @@
             <button id="exportBtn" type="button">Exportar mapa</button>
           </div>
 
-          <p class="hint">
-            Columnas recomendadas: <strong>latitud</strong>/<strong>lat</strong> y
-            <strong>longitud</strong>/<strong>lng</strong>/<strong>lon</strong>.
-          </p>
+          <p class="hint">La app te pedirá separador y columnas de coordenadas antes de mostrar puntos.</p>
           <p id="status" aria-live="polite">Aún no has cargado un archivo.</p>
         </div>
         <div id="map" aria-label="Mapa con puntos del CSV"></div>
