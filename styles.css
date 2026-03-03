@@ -91,6 +91,7 @@ body {
 .controls label { color: var(--muted); font-size: 0.84rem; }
 
 .controls input[type='text'],
+.controls input[type='number'],
 .controls select {
   background: #111;
   border: 1px solid #3b3b3b;

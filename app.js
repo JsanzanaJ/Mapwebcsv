@@ -39,6 +39,9 @@ const exportTitle = document.getElementById('exportTitle');
 const legendText = document.getElementById('legendText');
 const delimiterSelector = document.getElementById('delimiterSelector');
 const customDelimiter = document.getElementById('customDelimiter');
+const coordSystem = document.getElementById('coordSystem');
+const utmZone = document.getElementById('utmZone');
+const utmHemisphere = document.getElementById('utmHemisphere');
 const latColumn = document.getElementById('latColumn');
 const lonColumn = document.getElementById('lonColumn');
 const nameColumn = document.getElementById('nameColumn');
@@ -64,6 +67,70 @@ const iconPresets = {
 
 function findColumn(headers, options) {
   return headers.find((header) => options.includes(header.toLowerCase().trim()));
+}
+
+function isValidLatLon(lat, lon) {
+  return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+}
+
+function utmToLatLon(easting, northing, zoneNumber, hemisphere = 'N') {
+  const a = 6378137;
+  const eccSquared = 0.00669438;
+  const k0 = 0.9996;
+
+  const x = easting - 500000;
+  let y = northing;
+
+  if (hemisphere === 'S') {
+    y -= 10000000;
+  }
+
+  const longOrigin = (zoneNumber - 1) * 6 - 180 + 3;
+  const eccPrimeSquared = eccSquared / (1 - eccSquared);
+  const M = y / k0;
+  const mu = M / (a * (1 - eccSquared / 4 - (3 * eccSquared ** 2) / 64 - (5 * eccSquared ** 3) / 256));
+
+  const e1 = (1 - Math.sqrt(1 - eccSquared)) / (1 + Math.sqrt(1 - eccSquared));
+
+  const J1 = (3 * e1) / 2 - (27 * e1 ** 3) / 32;
+  const J2 = (21 * e1 ** 2) / 16 - (55 * e1 ** 4) / 32;
+  const J3 = (151 * e1 ** 3) / 96;
+  const J4 = (1097 * e1 ** 4) / 512;
+
+  const fp = mu + J1 * Math.sin(2 * mu) + J2 * Math.sin(4 * mu) + J3 * Math.sin(6 * mu) + J4 * Math.sin(8 * mu);
+
+  const sinFp = Math.sin(fp);
+  const cosFp = Math.cos(fp);
+  const tanFp = Math.tan(fp);
+
+  const C1 = eccPrimeSquared * cosFp ** 2;
+  const T1 = tanFp ** 2;
+  const N1 = a / Math.sqrt(1 - eccSquared * sinFp ** 2);
+  const R1 = (a * (1 - eccSquared)) / (1 - eccSquared * sinFp ** 2) ** 1.5;
+  const D = x / (N1 * k0);
+
+  const lat = fp - ((N1 * tanFp) / R1) * (
+    D ** 2 / 2 -
+    (5 + 3 * T1 + 10 * C1 - 4 * C1 ** 2 - 9 * eccPrimeSquared) * D ** 4 / 24 +
+    (61 + 90 * T1 + 298 * C1 + 45 * T1 ** 2 - 252 * eccPrimeSquared - 3 * C1 ** 2) * D ** 6 / 720
+  );
+
+  const lon = (
+    D -
+    (1 + 2 * T1 + C1) * D ** 3 / 6 +
+    (5 - 2 * C1 + 28 * T1 - 3 * C1 ** 2 + 8 * eccPrimeSquared + 24 * T1 ** 2) * D ** 5 / 120
+  ) / cosFp;
+
+  return {
+    lat: (lat * 180) / Math.PI,
+    lon: longOrigin + (lon * 180) / Math.PI,
+  };
+}
+
+function updateCoordSystemUI() {
+  const isUtm = coordSystem.value === 'utm';
+  utmZone.disabled = !isUtm;
+  utmHemisphere.disabled = !isUtm;
 }
 
 function getDelimiter() {
@@ -129,10 +196,7 @@ function renderPoints(points, fitBounds = false) {
 }
 
 function fillColumnSelectors(headers) {
-  const options = headers
-    .map((header) => `<option value="${header}">${header}</option>`)
-    .join('');
-
+  const options = headers.map((header) => `<option value="${header}">${header}</option>`).join('');
   latColumn.innerHTML = options;
   lonColumn.innerHTML = options;
   nameColumn.innerHTML = `<option value="">(Sin nombre)</option>${options}`;
@@ -141,24 +205,14 @@ function fillColumnSelectors(headers) {
   const autoLon = findColumn(headers, aliases.lon);
   const autoName = findColumn(headers, aliases.name);
 
-  if (autoLat) {
-    latColumn.value = autoLat;
-  }
-
-  if (autoLon) {
-    lonColumn.value = autoLon;
-  }
-
-  if (autoName) {
-    nameColumn.value = autoName;
-  }
+  if (autoLat) latColumn.value = autoLat;
+  if (autoLon) lonColumn.value = autoLon;
+  if (autoName) nameColumn.value = autoName;
 }
 
 function parseCurrentFile() {
   const file = csvInput.files[0];
-  if (!file) {
-    return;
-  }
+  if (!file) return;
 
   Papa.parse(file, {
     header: true,
@@ -166,7 +220,7 @@ function parseCurrentFile() {
     delimiter: getDelimiter(),
     complete: ({ data, meta, errors }) => {
       if (errors.length > 0) {
-        statusText.textContent = 'No se pudo leer el CSV. Revisa el separador y el formato.';
+        statusText.textContent = 'No se pudo leer el CSV. Revisa separador y formato.';
         parsedRows = [];
         parsedHeaders = [];
         currentPoints = [];
@@ -178,13 +232,13 @@ function parseCurrentFile() {
       parsedHeaders = meta.fields || [];
 
       if (parsedHeaders.length < 2) {
-        statusText.textContent = 'No se detectaron columnas suficientes. Verifica el separador.';
+        statusText.textContent = 'No se detectaron columnas suficientes. Revisa el separador.';
         clearUI('No se pudieron detectar columnas.');
         return;
       }
 
       fillColumnSelectors(parsedHeaders);
-      statusText.textContent = 'CSV cargado. Ahora selecciona columnas de latitud y longitud y pulsa "Aplicar columnas".';
+      statusText.textContent = 'CSV cargado. Selecciona columnas y sistema de coordenadas, luego pulsa "Aplicar columnas".';
       clearUI('CSV leído. Falta aplicar columnas de coordenadas.');
     },
     error: () => {
@@ -208,16 +262,42 @@ function applySelectedColumns() {
   const nameKey = nameColumn.value;
 
   if (!latKey || !lonKey) {
-    statusText.textContent = 'Debes seleccionar columnas de latitud y longitud.';
+    statusText.textContent = 'Debes seleccionar columnas de coordenadas.';
+    return;
+  }
+
+  const mode = coordSystem.value;
+  let zone = Number.parseInt(utmZone.value, 10);
+  const hemisphere = utmHemisphere.value;
+
+  if (mode === 'utm' && (!Number.isInteger(zone) || zone < 1 || zone > 60)) {
+    statusText.textContent = 'Para UTM debes indicar una zona válida (1 a 60).';
     return;
   }
 
   const points = [];
-  parsedRows.forEach((row, index) => {
-    const lat = Number.parseFloat(row[latKey]);
-    const lon = Number.parseFloat(row[lonKey]);
+  let invalidCount = 0;
 
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+  parsedRows.forEach((row, index) => {
+    const rawY = Number.parseFloat(row[latKey]);
+    const rawX = Number.parseFloat(row[lonKey]);
+
+    if (!Number.isFinite(rawY) || !Number.isFinite(rawX)) {
+      invalidCount += 1;
+      return;
+    }
+
+    let lat = rawY;
+    let lon = rawX;
+
+    if (mode === 'utm') {
+      const converted = utmToLatLon(rawX, rawY, zone, hemisphere);
+      lat = converted.lat;
+      lon = converted.lon;
+    }
+
+    if (!isValidLatLon(lat, lon)) {
+      invalidCount += 1;
       return;
     }
 
@@ -227,26 +307,27 @@ function applySelectedColumns() {
 
   if (points.length === 0) {
     currentPoints = [];
-    statusText.textContent = 'No hay coordenadas válidas con esas columnas seleccionadas.';
+    if (mode === 'latlon') {
+      statusText.textContent = 'No hay coordenadas válidas. Parece que elegiste columnas UTM en modo Lat/Lon.';
+    } else {
+      statusText.textContent = 'No hay coordenadas válidas con las columnas o zona UTM seleccionadas.';
+    }
     clearUI('No hay puntos válidos para mostrar.');
     return;
   }
 
   currentPoints = points;
   renderPoints(currentPoints, true);
-  statusText.textContent = `Se cargaron ${currentPoints.length} punto(s) con las columnas seleccionadas.`;
+
+  const warning = invalidCount > 0 ? ` (${invalidCount} fila(s) omitidas por coordenadas inválidas)` : '';
+  statusText.textContent = `Se cargaron ${currentPoints.length} punto(s) correctamente.${warning}`;
 }
 
 function getScaleLabel() {
   const pointA = map.containerPointToLatLng([40, 40]);
   const pointB = map.containerPointToLatLng([140, 40]);
   const meters = map.distance(pointA, pointB);
-
-  if (meters >= 1000) {
-    return `Escala aprox: ${(meters / 1000).toFixed(1)} km`;
-  }
-
-  return `Escala aprox: ${Math.round(meters)} m`;
+  return meters >= 1000 ? `Escala aprox: ${(meters / 1000).toFixed(1)} km` : `Escala aprox: ${Math.round(meters)} m`;
 }
 
 async function exportMapImage() {
@@ -264,21 +345,11 @@ async function exportMapImage() {
   const scale = getScaleLabel();
   const iconSymbol = iconPresets[iconSelector.value] || '📍';
 
-  overlay.innerHTML = `
-    <h3>${title}</h3>
-    <p>${iconSymbol} ${legend}</p>
-    <span>${scale}</span>
-  `;
-
+  overlay.innerHTML = `<h3>${title}</h3><p>${iconSymbol} ${legend}</p><span>${scale}</span>`;
   mapContainer.appendChild(overlay);
 
   try {
-    const canvas = await html2canvas(mapContainer, {
-      useCORS: true,
-      backgroundColor: '#111111',
-      scale: 2,
-    });
-
+    const canvas = await html2canvas(mapContainer, { useCORS: true, backgroundColor: '#111111', scale: 2 });
     const link = document.createElement('a');
     link.download = `${title.toLowerCase().replace(/\s+/g, '-') || 'mapa'}.png`;
     link.href = canvas.toDataURL('image/png');
@@ -296,18 +367,12 @@ applyColumnsBtn.addEventListener('click', applySelectedColumns);
 
 delimiterSelector.addEventListener('change', () => {
   customDelimiter.disabled = delimiterSelector.value !== 'custom';
-
-  if (delimiterSelector.value !== 'custom') {
-    customDelimiter.value = '';
-  }
-
+  if (delimiterSelector.value !== 'custom') customDelimiter.value = '';
   parseCurrentFile();
 });
 
 customDelimiter.addEventListener('input', () => {
-  if (delimiterSelector.value === 'custom' && customDelimiter.value.length === 1) {
-    parseCurrentFile();
-  }
+  if (delimiterSelector.value === 'custom' && customDelimiter.value.length === 1) parseCurrentFile();
 });
 
 iconSelector.addEventListener('change', () => {
@@ -325,6 +390,7 @@ basemapSelector.addEventListener('change', (event) => {
   statusText.textContent = 'Mapa base actualizado.';
 });
 
+coordSystem.addEventListener('change', updateCoordSystemUI);
 exportBtn.addEventListener('click', exportMapImage);
-
+updateCoordSystemUI();
 clearUI('Carga un CSV para empezar.');
