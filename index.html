@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSV a Mapa</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-bg"></div>
+
+    <header class="topbar">
+      <div class="brand-pill">MAPFLIX CSV</div>
+      <h1>Visualizador de CSV en mapa</h1>
+      <p>Carga un archivo CSV con coordenadas, personaliza íconos, mapas base y exporta.</p>
+    </header>
+
+    <main class="layout">
+      <section class="map-panel">
+        <div class="controls">
+          <div class="control-row">
+            <label class="upload" for="csvInput">Subir CSV</label>
+            <input id="csvInput" type="file" accept=".csv,text/csv" />
+
+            <label for="iconSelector">Ícono</label>
+            <select id="iconSelector">
+              <option value="pin">📍 Pin</option>
+              <option value="dot">🔴 Punto</option>
+              <option value="star">⭐ Estrella</option>
+              <option value="place">📌 Chincheta</option>
+            </select>
+
+            <label for="basemapSelector">Mapa base</label>
+            <select id="basemapSelector">
+              <option value="streets">🛣️ Calles</option>
+              <option value="dark">🌙 Oscuro</option>
+              <option value="satellite">🛰️ Satelital</option>
+              <option value="light">⬜ Blanco minimalista</option>
+            </select>
+          </div>
+
+          <div class="control-row">
+            <label for="exportTitle">Título exportación</label>
+            <input id="exportTitle" type="text" placeholder="Ej. Puntos de clientes - Marzo" />
+
+            <label for="legendText">Mini leyenda</label>
+            <input id="legendText" type="text" placeholder="Ej. Tiendas activas" />
+
+            <button id="exportBtn" type="button">Exportar mapa</button>
+          </div>
+
+          <p class="hint">
+            Columnas recomendadas: <strong>latitud</strong>/<strong>lat</strong> y
+            <strong>longitud</strong>/<strong>lng</strong>/<strong>lon</strong>.
+          </p>
+          <p id="status" aria-live="polite">Aún no has cargado un archivo.</p>
+        </div>
+        <div id="map" aria-label="Mapa con puntos del CSV"></div>
+      </section>
+
+      <aside class="list-panel">
+        <h2>Puntos cargados</h2>
+        <ul id="pointList"></ul>
+      </aside>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
